@@ -99,7 +99,9 @@ void loop() {
     remoteSeen = true;
     Serial.println(remote);
     refresh();
-  } else if (now - lastSendMs >= sendIntervalMs) {
+  }
+
+  if (now - lastSendMs >= sendIntervalMs) {
     sendLocal();
   }
 
