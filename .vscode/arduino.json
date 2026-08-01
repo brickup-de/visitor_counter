@@ -1,0 +1,4 @@
+{
+    "sketch": "sketch_v6_arcade_buttons.ino",
+    "board": "arduino:avr:nano"
+}

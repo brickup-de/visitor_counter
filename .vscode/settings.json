@@ -1,0 +1,4 @@
+{
+    "arduino.useArduinoCli": true,
+    "arduino.path": "/home/deck/.mybashcommands/arduino-cli"
+}
