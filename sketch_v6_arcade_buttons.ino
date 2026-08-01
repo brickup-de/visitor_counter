@@ -1,29 +1,29 @@
-#include <Arduino.h>
 #include <AcksenButton.h>
-#include <TM1637Display.h>
+#include <Arduino.h>
 #include <SoftwareSerial.h>
+#include <TM1637Display.h>
+
+#define BUTTON_INCREASE 2 // green arcade button switch (to GND, INPUT_PULLUP)
+#define LED_INCREASE 3    // green button LED (through resistor, active HIGH)
+#define LED_DECREASE 4    // red button LED (through resistor, active HIGH)
+#define BUTTON_DECREASE 5 // red arcade button switch (to GND, INPUT_PULLUP)
+#define BUZZER 6          // passive buzzer -> tone()
+#define RS485_DI 8
+#define RS485_DE 9 // DE and RE tied together on D9 in the new wiring
+#define RS485_RE 9 // kept as two defines like v5; edit if wired separately
+#define RS485_RO 10
+#define DISPLAY_CLK A5 // Grove TM1637
+#define DISPLAY_DIO A4
 
 #define BUTTON_DEBOUNCE_INTERVAL 20
-#define BUTTON_INCREASE 2   // green arcade button switch (to GND, INPUT_PULLUP)
-#define LED_INCREASE    3   // green button LED (through resistor, active HIGH)
-#define LED_DECREASE    4   // red button LED (through resistor, active HIGH)
-#define BUTTON_DECREASE 5   // red arcade button switch (to GND, INPUT_PULLUP)
-#define BUZZER          6   // passive buzzer -> tone()
-#define RS485_DI        8
-#define RS485_DE        9   // DE and RE tied together on D9 in the new wiring
-#define RS485_RE        9   //   (kept as two defines like v5; edit if wired separately)
-#define RS485_RO        10
-#define DISPLAY_CLK     A5  // Grove TM1637
-#define DISPLAY_DIO     A4
-
-#define LED_FLASH_MS          200   // button LED feedback on press
-#define SYNC_SEND_INTERVAL_MS 1000  // periodic send of local count
-#define LINK_TIMEOUT_MS       5000  // link considered lost after this silence
-#define LINK_BLINK_MS         500   // red LED blink half-period while link lost
-#define ALARM_INTERVAL_MS     5000  // warning chirps repeat while link lost
-#define ALARM_TONE_HZ         2000
-#define ALARM_TONE_MS         100
-#define ALARM_CHIRP_GAP_MS    150   // start of 2nd chirp after start of 1st
+#define LED_FLASH_MS 200           // button LED feedback on press
+#define SYNC_SEND_INTERVAL_MS 1000 // periodic send of local count
+#define LINK_TIMEOUT_MS 5000       // link considered lost after this silence
+#define LINK_BLINK_MS 500          // red LED blink half-period while link lost
+#define ALARM_INTERVAL_MS 5000     // warning chirps repeat while link lost
+#define ALARM_TONE_HZ 2000
+#define ALARM_TONE_MS 100
+#define ALARM_CHIRP_GAP_MS 150 // start of 2nd chirp after start of 1st
 
 AcksenButton btnIncrease(BUTTON_INCREASE, ACKSEN_BUTTON_MODE_NORMAL, BUTTON_DEBOUNCE_INTERVAL, INPUT_PULLUP);
 AcksenButton btnDecrease(BUTTON_DECREASE, ACKSEN_BUTTON_MODE_NORMAL, BUTTON_DEBOUNCE_INTERVAL, INPUT_PULLUP);
@@ -71,14 +71,16 @@ void loop() {
 
   btnIncrease.refreshStatus();
   btnDecrease.refreshStatus();
-  if (btnIncrease.onPressed() == true) {
+
+  if (btnIncrease.onPressed()) {
     local++;
     ledIncreaseFlash = true;
     ledIncreaseFlashStart = now;
     refresh();
     sendLocal();
   }
-  if (btnDecrease.onPressed() == true) {
+
+  if (btnDecrease.onPressed()) {
     local--;
     ledDecreaseFlash = true;
     ledDecreaseFlashStart = now;
