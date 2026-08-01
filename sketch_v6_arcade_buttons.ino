@@ -3,30 +3,30 @@
 #include <SoftwareSerial.h>
 #include <TM1637Display.h>
 
-#define BUTTON_INCREASE 2 // green arcade button switch (to GND, INPUT_PULLUP)
-#define LED_INCREASE 3    // green button LED (through resistor, active HIGH)
-#define LED_DECREASE 4    // red button LED (through resistor, active HIGH)
-#define BUTTON_DECREASE 5 // red arcade button switch (to GND, INPUT_PULLUP)
-#define BUZZER 6          // passive buzzer -> tone()
-#define RS485_DI 8
-#define RS485_DE 9 // DE and RE tied together on D9 in the new wiring
-#define RS485_RE 9 // kept as two defines like v5; edit if wired separately
-#define RS485_RO 10
-#define DISPLAY_CLK A5 // Grove TM1637
+#define BTN_INCREASE 2 // green button
+#define BTN_DECREASE 5 // red button
+#define LED_INCREASE 3 // green LED
+#define LED_DECREASE 4 // red LED
+#define DISPLAY_CLK A5 // 4x7-segment-display
 #define DISPLAY_DIO A4
+#define TONE_BUZZER 6
+#define RS485_DI 8
+#define RS485_DE 9
+#define RS485_RE 10
+#define RS485_RO 11
 
-#define BUTTON_DEBOUNCE_INTERVAL 20
-#define LED_FLASH_MS 200           // button LED feedback on press
-#define SYNC_SEND_INTERVAL_MS 1000 // periodic send of local count
-#define LINK_TIMEOUT_MS 5000       // link considered lost after this silence
-#define LINK_BLINK_MS 500          // red LED blink half-period while link lost
-#define ALARM_INTERVAL_MS 5000     // warning chirps repeat while link lost
+#define BTN_DEBOUNCE_MS 20
+#define LED_FLASH_MS 200
+#define LINK_INTERVAL_MS 2000
+#define LINK_TIMEOUT_MS 10000
+#define LINK_BLINK_MS 500
 #define ALARM_TONE_HZ 2000
 #define ALARM_TONE_MS 100
-#define ALARM_CHIRP_GAP_MS 150 // start of 2nd chirp after start of 1st
+#define ALARM_TONE_GAP_MS 150
+#define ALARM_REPEAT_MS 5000
 
-AcksenButton btnIncrease(BUTTON_INCREASE, ACKSEN_BUTTON_MODE_NORMAL, BUTTON_DEBOUNCE_INTERVAL, INPUT_PULLUP);
-AcksenButton btnDecrease(BUTTON_DECREASE, ACKSEN_BUTTON_MODE_NORMAL, BUTTON_DEBOUNCE_INTERVAL, INPUT_PULLUP);
+AcksenButton btnIncrease(BTN_INCREASE, ACKSEN_BUTTON_MODE_NORMAL, BTN_DEBOUNCE_MS, INPUT_PULLUP);
+AcksenButton btnDecrease(BTN_DECREASE, ACKSEN_BUTTON_MODE_NORMAL, BTN_DEBOUNCE_MS, INPUT_PULLUP);
 TM1637Display disTotal(DISPLAY_CLK, DISPLAY_DIO);
 SoftwareSerial rs485(RS485_RO, RS485_DI);
 
@@ -63,7 +63,7 @@ void setup() {
   digitalWrite(LED_INCREASE, LOW);
   digitalWrite(LED_DECREASE, LOW);
 
-  pinMode(BUZZER, OUTPUT);
+  pinMode(TONE_BUZZER, OUTPUT);
 }
 
 void loop() {
@@ -95,7 +95,7 @@ void loop() {
     remoteSeen = true;
     Serial.println(remote);
     refresh();
-  } else if (now - lastSendMs >= SYNC_SEND_INTERVAL_MS) {
+  } else if (now - lastSendMs >= LINK_INTERVAL_MS) {
     sendLocal();
   }
 
@@ -113,13 +113,13 @@ void loop() {
     // blink overrides/coexists with the press flash
     redOn = redOn || ((now / LINK_BLINK_MS) % 2 == 0);
 
-    if (now - lastAlarmMs >= ALARM_INTERVAL_MS) {
+    if (now - lastAlarmMs >= ALARM_REPEAT_MS) {
       lastAlarmMs = now;
       secondChirpPending = true;
-      tone(BUZZER, ALARM_TONE_HZ, ALARM_TONE_MS);
-    } else if (secondChirpPending && now - lastAlarmMs >= ALARM_CHIRP_GAP_MS) {
+      tone(TONE_BUZZER, ALARM_TONE_HZ, ALARM_TONE_MS);
+    } else if (secondChirpPending && now - lastAlarmMs >= ALARM_TONE_GAP_MS) {
       secondChirpPending = false;
-      tone(BUZZER, ALARM_TONE_HZ, ALARM_TONE_MS);
+      tone(TONE_BUZZER, ALARM_TONE_HZ, ALARM_TONE_MS);
     }
   } else {
     secondChirpPending = false;

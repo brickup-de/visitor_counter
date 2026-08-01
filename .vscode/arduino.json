@@ -1,5 +1,7 @@
 {
     "sketch": "sketch_v6_arcade_buttons.ino",
     "board": "arduino:avr:nano",
-    "programmer": "avrispmkii"
+    "programmer": "avrispmkii",
+    "port": "/dev/ttyUSB0",
+    "configuration": "cpu=atmega328old"
 }
