@@ -18,6 +18,7 @@
 #define BTN_DEBOUNCE_MS 20
 #define LED_FLASH_MS 200
 #define LINK_INTERVAL_MS 2000
+#define LINK_INTERVAL_JITTER_MS 400
 #define LINK_TIMEOUT_MS 10000
 #define LINK_BLINK_MS 500
 #define ALARM_TONE_HZ 2000
@@ -40,6 +41,7 @@ unsigned long ledIncreaseFlashStart = 0;
 unsigned long ledDecreaseFlashStart = 0;
 
 unsigned long lastSendMs = 0;
+unsigned long sendIntervalMs = LINK_INTERVAL_MS;
 unsigned long lastRemoteMs = 0;
 bool remoteSeen = false;
 
@@ -64,6 +66,8 @@ void setup() {
   digitalWrite(LED_DECREASE, LOW);
 
   pinMode(TONE_BUZZER, OUTPUT);
+
+  randomSeed(analogRead(A0));
 }
 
 void loop() {
@@ -95,7 +99,7 @@ void loop() {
     remoteSeen = true;
     Serial.println(remote);
     refresh();
-  } else if (now - lastSendMs >= LINK_INTERVAL_MS) {
+  } else if (now - lastSendMs >= sendIntervalMs) {
     sendLocal();
   }
 
@@ -131,6 +135,7 @@ void loop() {
 
 void sendLocal() {
   lastSendMs = millis();
+  sendIntervalMs = LINK_INTERVAL_MS + random(-LINK_INTERVAL_JITTER_MS, LINK_INTERVAL_JITTER_MS + 1);
 
   digitalWrite(RS485_DE, HIGH);
   digitalWrite(RS485_RE, HIGH);
