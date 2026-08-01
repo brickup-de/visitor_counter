@@ -1,4 +1,5 @@
 {
     "sketch": "sketch_v6_arcade_buttons.ino",
-    "board": "arduino:avr:nano"
+    "board": "arduino:avr:nano",
+    "programmer": "avrispmkii"
 }
