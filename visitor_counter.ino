@@ -28,6 +28,7 @@
 
 #define BACKUP_DEBOUNCE_MS 3000
 #define BUTTON_DEBOUNCE_MS 20
+#define BUTTON_RESET_HOLD_MS 5000
 #define DEBUG_BAUD_RATE 9600
 #define DEBUG_DEBOUNCE_MS 1000
 #define DISPLAY_LEADING_ZEROS false
@@ -41,10 +42,10 @@
 //      must be defined before the coding     //
 // ########################################## //
 
-typedef uint8_t  backup_checksum_t;
+typedef uint8_t backup_checksum_t;
 typedef uint32_t backup_id_t;
 typedef uint16_t backup_index_t;
-typedef int16_t  count_t;
+typedef int16_t count_t;
 typedef uint16_t backup_address_t;
 typedef unsigned long time_ms_t;
 
@@ -56,7 +57,7 @@ struct backup_fields {
 
 // functions with optional parameters must declare the
 // default values in a prototype before the first usage.
-void debugValue(const char * key, int32_t value, bool endLine = false);
+void debugValue(const char *key, int32_t value, bool endLine = false);
 
 // ########################################## //
 //                SETUP & LOOP                //
@@ -170,7 +171,7 @@ void setupBackup() {
       debugValue("id", fields.id);
       debugValue("count", fields.count, true);
 
-      backupId    = fields.id;
+      backupId = fields.id;
       backupCount = fields.count;
       backupIndex = i;
     }
@@ -179,8 +180,10 @@ void setupBackup() {
 }
 
 void loopBackup() {
-  if (backupCount == countLocal) return;
-  if (timeSince(countLocalChangedAt) < BACKUP_DEBOUNCE_MS) return;
+  if (backupCount == countLocal)
+    return;
+  if (timeSince(countLocalChangedAt) < BACKUP_DEBOUNCE_MS)
+    return;
 
   backupId++;
   backupIndex = backupNextIndex();
@@ -230,8 +233,9 @@ bool backupIsValid(backup_fields fields) {
 //      Arcade switches with an LED each      //
 // ########################################## //
 
-AcksenButton btnIncrease(BUTTON_INCREASE, ACKSEN_BUTTON_MODE_NORMAL, BUTTON_DEBOUNCE_MS, INPUT_PULLUP);
-AcksenButton btnDecrease(BUTTON_DECREASE, ACKSEN_BUTTON_MODE_NORMAL, BUTTON_DEBOUNCE_MS, INPUT_PULLUP);
+AcksenButton buttonIncrease(BUTTON_INCREASE, ACKSEN_BUTTON_MODE_NORMAL, BUTTON_DEBOUNCE_MS, INPUT_PULLUP);
+AcksenButton buttonDecrease(BUTTON_DECREASE, ACKSEN_BUTTON_MODE_NORMAL, BUTTON_DEBOUNCE_MS, INPUT_PULLUP);
+time_ms_t buttonsBothHeldSince;
 
 void setupButtons() {
   pinMode(BUTTON_INCREASE_LED, OUTPUT);
@@ -241,13 +245,36 @@ void setupButtons() {
 }
 
 void loopButtons() {
-  btnIncrease.refreshStatus();
-  btnDecrease.refreshStatus();
+  buttonIncrease.refreshStatus();
+  buttonDecrease.refreshStatus();
 
-  if (btnIncrease.onPressed())
+  // onReleased = onPressed, because of INPUT_PULLUP mode 
+  // LOW and HIGH state are inverted (not handled by AcksenButton library)
+  if (buttonIncrease.onReleased())
     countAddLocal(+1);
-  if (btnDecrease.onPressed())
+  if (buttonDecrease.onReleased())
     countAddLocal(-1);
+  if (buttonResetTriggered())
+    countSetLocal(0);
+}
+
+bool buttonResetTriggered() {
+  if (buttonIncrease.getButtonState() || buttonDecrease.getButtonState()) {
+    buttonsBothHeldSince = 0;
+    return false;
+  }
+
+  if (buttonsBothHeldSince == 0) {
+    buttonsBothHeldSince = now;
+    return false;
+  }
+
+  if (timeSince(buttonsBothHeldSince) > BUTTON_RESET_HOLD_MS) {
+    buttonsBothHeldSince = 0;
+    return true;
+  }
+
+  return false;
 }
 
 // ########################################## //
@@ -298,11 +325,13 @@ void linkSendLocalCount() {
 
 void receiveRemoteCount() {
   char begin = link.read();
-  if (begin != LINK_MESSAGE_BEGIN) return;
+  if (begin != LINK_MESSAGE_BEGIN)
+    return;
 
   count_t remote = link.parseInt();
   char end = link.read();
-  if (end != LINK_MESSAGE_END) return;
+  if (end != LINK_MESSAGE_END)
+    return;
 
   countSetRemote(remote);
 }
@@ -322,8 +351,9 @@ void setupDisplay() {
 
 void loopDisplay() {
   count_t count = countTotal();
-  if (count == displayNumber) return;
-  
+  if (count == displayNumber)
+    return;
+
   display.showNumberDec(count, DISPLAY_LEADING_ZEROS);
   displayNumber = count;
 }
@@ -351,7 +381,8 @@ void setupDebug() {
 }
 
 void loopDebug() {
-  if (timeSince(debugOutputAt) < DEBUG_DEBOUNCE_MS) return;
+  if (timeSince(debugOutputAt) < DEBUG_DEBOUNCE_MS)
+    return;
 
   debugValue("local", countLocal);
   debugValue("backup", backupCount);
@@ -362,7 +393,7 @@ void loopDebug() {
   debugOutputAt = now;
 }
 
-void debugValue(const char * key, int32_t value, bool endLine) {
+void debugValue(const char *key, int32_t value, bool endLine) {
   Serial.print(key);
   Serial.print(',');
   Serial.print(value);
