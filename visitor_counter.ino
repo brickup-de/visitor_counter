@@ -161,7 +161,9 @@ void setupBackup() {
   backupCount = 0;
   backupId = 0;
   backupIndex = 0;
+  
   backupIndexMaximum = EEPROM.length() / sizeof(backup_fields) - 1;
+  debugValue("maxBackups", backupIndexMaximum + 1, true);
 
   // find latest valid backup
   Serial.println("setupBackup: searching...");
@@ -387,14 +389,13 @@ void loopDebug() {
     return;
 
   debugValue("local", countLocal);
-  debugValue("backup", backupCount);
   debugValue("sent", linkSentCount);
   debugValue("remote", countRemote);
   debugValue("display", displayCount);
   debugValue("backup", backupCount);
-  debugValue("backupIndex", backupIndex);
-  debugValue("backupId", backupId);
-  debugValue("bothButtonsSince", buttonsBothHeldSince == 0 ? 0 : timeSince(buttonsBothHeldSince), true);
+  debugValue("bIndex", backupIndex);
+  debugValue("bId", backupId);
+  debugValue("bothBtnTime", buttonsBothHeldSince == 0 ? 0 : timeSince(buttonsBothHeldSince), true);
   debugOutputAt = now;
 }
 
