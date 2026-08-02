@@ -28,6 +28,7 @@
 
 #define BACKUP_DEBOUNCE_MS 3000
 #define BUTTON_DEBOUNCE_MS 20
+#define BUTTON_PRESS_COOLDOWN_MS 3000
 #define BUTTON_RESET_HOLD_MS 5000
 #define DEBUG_BAUD_RATE 9600
 #define DEBUG_DEBOUNCE_MS 1000
@@ -109,6 +110,7 @@ unsigned long timeSince(time_ms_t event) {
 // ########################################## //
 
 count_t countLocal;
+count_t countReceived;
 count_t countRemote;
 count_t countTotal() {
   return countLocal + countRemote;
@@ -122,11 +124,18 @@ time_ms_t countTotalChangedAt() {
 
 void setupCount() {
   countSetLocal(0);
+  countSetReceived(0);
   countSetRemote(0);
 }
 
 void loopCount() {
-  // nothing to do
+  // hold back changes while user is pressing buttons
+  if (countReceived == countRemote)
+    return;
+  if (buttonPressedRecently())
+    return;
+
+  countSetRemote(countReceived);
 }
 
 void countAddLocal(count_t delta) {
@@ -138,6 +147,10 @@ void countSetLocal(count_t local) {
     countLocal = local;
     countLocalChangedAt = now;
   }
+}
+
+void countSetReceived(count_t received) {
+  countReceived = received;
 }
 
 void countSetRemote(count_t remote) {
@@ -239,6 +252,7 @@ bool backupIsValid(backup_fields fields) {
 AcksenButton buttonIncrease(BUTTON_INCREASE, ACKSEN_BUTTON_MODE_NORMAL, BUTTON_DEBOUNCE_MS, INPUT_PULLUP);
 AcksenButton buttonDecrease(BUTTON_DECREASE, ACKSEN_BUTTON_MODE_NORMAL, BUTTON_DEBOUNCE_MS, INPUT_PULLUP);
 time_ms_t buttonsBothHeldSince;
+time_ms_t buttonPressedAt;
 
 void setupButtons() {
   pinMode(BUTTON_INCREASE_LED, OUTPUT);
@@ -251,14 +265,20 @@ void loopButtons() {
   buttonIncrease.refreshStatus();
   buttonDecrease.refreshStatus();
 
-  // onReleased = onPressed, because of INPUT_PULLUP mode 
-  // LOW and HIGH state are inverted (not handled by AcksenButton library)
+  // button states are inverted in INPUT_PULLUP mode
+  // (not handled by AcksenButton library)
+  if (!buttonIncrease.getButtonState() || !buttonDecrease.getButtonState())
+    buttonPressedAt = now;
   if (buttonIncrease.onReleased())
     countAddLocal(+1);
   if (buttonDecrease.onReleased())
     countAddLocal(-1);
   if (buttonResetTriggered())
     countSetLocal(0);
+}
+
+bool buttonPressedRecently() {
+  return timeSince(buttonPressedAt) < BUTTON_PRESS_COOLDOWN_MS;
 }
 
 bool buttonResetTriggered() {
@@ -336,7 +356,7 @@ void receiveRemoteCount() {
   if (end != LINK_MESSAGE_END)
     return;
 
-  countSetRemote(remote);
+  countSetReceived(remote);
 }
 
 // ########################################## //
@@ -390,6 +410,7 @@ void loopDebug() {
 
   debugValue("local", countLocal);
   debugValue("sent", linkSentCount);
+  debugValue("received", countReceived);
   debugValue("remote", countRemote);
   debugValue("display", displayCount);
   debugValue("backup", backupCount);
