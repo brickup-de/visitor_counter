@@ -15,7 +15,7 @@
 #define RS485_RE 10
 #define RS485_RO 11
 
-#define BTN_DEBOUNCE_MS 20
+#define BTN_DEBOUNCE_MS 0
 #define LED_FLASH_MS 200
 #define LINK_INTERVAL_MS 2000
 #define LINK_INTERVAL_JITTER_MS 400
@@ -34,6 +34,7 @@ SoftwareSerial rs485(RS485_RO, RS485_DI);
 int32_t local = 0;
 int32_t remote = 0;
 int32_t total = 0;
+int32_t synci = 0;
 
 bool ledIncreaseFlash = false;
 bool ledDecreaseFlash = false;
@@ -71,74 +72,36 @@ void setup() {
 }
 
 void loop() {
-  unsigned long now = millis();
-
   btnIncrease.refreshStatus();
   btnDecrease.refreshStatus();
 
   if (btnIncrease.onPressed()) {
     local++;
-    ledIncreaseFlash = true;
-    ledIncreaseFlashStart = now;
+    Serial.print("local/increase: ");
+    Serial.println(local);
     refresh();
-    sendLocal();
   }
 
   if (btnDecrease.onPressed()) {
     local--;
-    ledDecreaseFlash = true;
-    ledDecreaseFlashStart = now;
+    Serial.print("local/decrease: ");
+    Serial.println(local);
     refresh();
-    sendLocal();
   }
 
   if (rs485.available() > 0) {
     remote = rs485.parseInt();
     rs485.read(); // -> "|"
-    lastRemoteMs = millis();
-    remoteSeen = true;
+    Serial.print("remote/receive: ");
     Serial.println(remote);
     refresh();
-  }
-
-  if (now - lastSendMs >= sendIntervalMs) {
+  } else if (synci++ > 10000) {
+    synci = 0;
     sendLocal();
   }
-
-  if (ledIncreaseFlash && now - ledIncreaseFlashStart >= LED_FLASH_MS) {
-    ledIncreaseFlash = false;
-  }
-  if (ledDecreaseFlash && now - ledDecreaseFlashStart >= LED_FLASH_MS) {
-    ledDecreaseFlash = false;
-  }
-
-  bool linkUp = remoteSeen && (now - lastRemoteMs < LINK_TIMEOUT_MS);
-
-  bool redOn = ledDecreaseFlash;
-  if (!linkUp) {
-    // blink overrides/coexists with the press flash
-    redOn = redOn || ((now / LINK_BLINK_MS) % 2 == 0);
-
-    if (now - lastAlarmMs >= ALARM_REPEAT_MS) {
-      lastAlarmMs = now;
-      secondChirpPending = true;
-      tone(TONE_BUZZER, ALARM_TONE_HZ, ALARM_TONE_MS);
-    } else if (secondChirpPending && now - lastAlarmMs >= ALARM_TONE_GAP_MS) {
-      secondChirpPending = false;
-      tone(TONE_BUZZER, ALARM_TONE_HZ, ALARM_TONE_MS);
-    }
-  } else {
-    secondChirpPending = false;
-  }
-
-  digitalWrite(LED_INCREASE, ledIncreaseFlash ? HIGH : LOW);
-  digitalWrite(LED_DECREASE, redOn ? HIGH : LOW);
 }
 
 void sendLocal() {
-  lastSendMs = millis();
-  sendIntervalMs = LINK_INTERVAL_MS + random(-LINK_INTERVAL_JITTER_MS, LINK_INTERVAL_JITTER_MS + 1);
-
   digitalWrite(RS485_DE, HIGH);
   digitalWrite(RS485_RE, HIGH);
 
@@ -149,11 +112,11 @@ void sendLocal() {
   digitalWrite(RS485_DE, LOW);
   digitalWrite(RS485_RE, LOW);
 
-  Serial.print("Sent ");
+  Serial.print("local/send: ");
   Serial.println(local);
 }
 
 void refresh() {
   total = abs(local - remote);
-  disTotal.showNumberDec(total, true);
+  disTotal.showNumberDec(total, false);
 }
