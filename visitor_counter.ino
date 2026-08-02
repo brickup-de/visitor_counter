@@ -38,7 +38,7 @@
 #define LINK_SENT_DEBOUNCE_MS 2000
 
 // ########################################## //
-//            TYPES & STRUCTURES              //
+//        TYPES, STRUCTURES, PROTOTYPES       //
 //      must be defined before the coding     //
 // ########################################## //
 
@@ -92,6 +92,7 @@ void loop() {
 //                    TIME                    //
 //  helpers to avoid millis-overflow trouble  //
 // ########################################## //
+
 time_ms_t now = 0;
 
 void loopTime() {
@@ -342,7 +343,7 @@ void receiveRemoteCount() {
 // ########################################## //
 
 TM1637Display display(DISPLAY_CLK, DISPLAY_DIO);
-count_t displayNumber = 0;
+count_t displayCount = 0;
 
 void setupDisplay() {
   display.setBrightness(1);
@@ -351,11 +352,11 @@ void setupDisplay() {
 
 void loopDisplay() {
   count_t count = countTotal();
-  if (count == displayNumber)
+  if (count == displayCount)
     return;
 
   display.showNumberDec(count, DISPLAY_LEADING_ZEROS);
-  displayNumber = count;
+  displayCount = count;
 }
 
 // ########################################## //
@@ -374,6 +375,7 @@ void loopSound() {
 //                    DEBUG                   //
 //     send important values over Serial      //
 // ########################################## //
+
 time_ms_t debugOutputAt;
 
 void setupDebug() {
@@ -388,14 +390,17 @@ void loopDebug() {
   debugValue("backup", backupCount);
   debugValue("sent", linkSentCount);
   debugValue("remote", countRemote);
+  debugValue("display", displayCount);
+  debugValue("backup", backupCount);
   debugValue("backupIndex", backupIndex);
-  debugValue("backupId", backupId, true);
+  debugValue("backupId", backupId);
+  debugValue("bothButtonsSince", buttonsBothHeldSince == 0 ? 0 : timeSince(buttonsBothHeldSince), true);
   debugOutputAt = now;
 }
 
 void debugValue(const char *key, int32_t value, bool endLine) {
   Serial.print(key);
-  Serial.print(',');
+  Serial.print('=');
   Serial.print(value);
-  endLine ? Serial.println() : Serial.print(',');
+  endLine ? Serial.println() : Serial.print('|');
 }
