@@ -13,10 +13,10 @@
 #define BUTTON_INCREASE_LED 3
 #define BUTTON_DECREASE 5
 #define BUTTON_DECREASE_LED 4
-#define COMMUNICATION_DI 8
-#define COMMUNICATION_DE 9
-#define COMMUNICATION_RE 10
-#define COMMUNICATION_RO 11
+#define LINK_RS485_DI 8
+#define LINK_RS485_DE 9
+#define LINK_RS485_RE 10
+#define LINK_RS485_RO 11
 #define DISPLAY_CLK A5
 #define DISPLAY_DIO A4
 #define SOUND_BUZZER 6
@@ -28,9 +28,13 @@
 
 #define BACKUP_DEBOUNCE_MS 3000
 #define BUTTON_DEBOUNCE_MS 20
-#define CONNECTION_BAUD_RATE 9600
+#define DEBUG_BAUD_RATE 9600
+#define DEBUG_DEBOUNCE_MS 1000
 #define DISPLAY_LEADING_ZEROS false
-#define SERIAL_BAUD_RATE 9600
+#define LINK_BAUD_RATE 9600
+#define LINK_MESSAGE_BEGIN '['
+#define LINK_MESSAGE_END ']'
+#define LINK_SENT_DEBOUNCE_MS 2000
 
 // ########################################## //
 //            TYPES & STRUCTURES              //
@@ -42,7 +46,7 @@ typedef uint32_t backup_id_t;
 typedef uint16_t backup_index_t;
 typedef int16_t  count_t;
 typedef uint16_t backup_address_t;
-typedef unsigned long time_t;
+typedef unsigned long time_ms_t;
 
 struct backup_fields {
   backup_id_t id;
@@ -50,15 +54,19 @@ struct backup_fields {
   count_t count;
 };
 
+// functions with optional parameters must declare the
+// default values in a prototype before the first usage.
+void debugValue(const char * key, int32_t value, bool endLine = false);
+
 // ########################################## //
 //                SETUP & LOOP                //
 // ########################################## //
 
 void setup() {
-  Serial.begin(SERIAL_BAUD_RATE);
+  setupDebug();
 
   setupButtons();
-  setupConnection();
+  setupLink();
   setupDisplay();
   setupSound();
 
@@ -67,17 +75,35 @@ void setup() {
 }
 
 void loop() {
+  loopTime();
+
   loopBackup();
   loopButtons();
-  loopConnection();
+  loopLink();
   loopCount();
   loopDisplay();
   loopSound();
+
+  loopDebug();
+}
+
+// ########################################## //
+//                    TIME                    //
+//  helpers to avoid millis-overflow trouble  //
+// ########################################## //
+time_ms_t now = 0;
+
+void loopTime() {
+  now = millis();
+}
+
+unsigned long timeSince(time_ms_t event) {
+  return now - event;
 }
 
 // ########################################## //
 //                   COUNT                    //
-//       manages local/remote/total count     //
+// local/remote/total count; can be negative  //
 // ########################################## //
 
 count_t countLocal;
@@ -86,9 +112,9 @@ count_t countTotal() {
   return countLocal + countRemote;
 }
 
-time_t countLocalChangedAt;
-time_t countRemoteChangedAt;
-time_t countTotalChangedAt() {
+time_ms_t countLocalChangedAt;
+time_ms_t countRemoteChangedAt;
+time_ms_t countTotalChangedAt() {
   return max(countLocalChangedAt, countRemoteChangedAt);
 }
 
@@ -108,20 +134,14 @@ void countAddLocal(count_t delta) {
 void countSetLocal(count_t local) {
   if (countLocal != local) {
     countLocal = local;
-    countLocalChangedAt = millis();
-
-    Serial.print("countSetLocal: ");
-    Serial.println(countLocal);    
+    countLocalChangedAt = now;
   }
 }
 
 void countSetRemote(count_t remote) {
   if (countRemote != remote) {
     countRemote = remote;
-    countRemoteChangedAt = millis();
-
-    Serial.print("countSetRemote: ");
-    Serial.println(countRemote);
+    countRemoteChangedAt = now;
   }
 }
 
@@ -130,50 +150,47 @@ void countSetRemote(count_t remote) {
 //  save local count in case of power outage  //
 // ########################################## //
 
-count_t backupLatestCount;
-backup_id_t backupLatestId;
-backup_index_t backupLatestIndex;
-backup_index_t backupMaximumIndex;
+count_t backupCount;
+backup_id_t backupId;
+backup_index_t backupIndex;
+backup_index_t backupIndexMaximum;
 
 void setupBackup() {
-  backupLatestCount = 0;
-  backupLatestId = 0;
-  backupLatestIndex = 0;
-  backupMaximumIndex = EEPROM.length() / sizeof(backup_fields) - 1;
+  backupCount = 0;
+  backupId = 0;
+  backupIndex = 0;
+  backupIndexMaximum = EEPROM.length() / sizeof(backup_fields) - 1;
 
   // find latest valid backup
   Serial.println("setupBackup: searching...");
-  for (backup_index_t i = 0; i <= backupMaximumIndex; i++) {
+  for (backup_index_t i = 0; i <= backupIndexMaximum; i++) {
     backup_fields fields = backupGet(i);
-    if (backupIsValid(fields) && fields.id > backupLatestId) {
-      Serial.print("setupBackup - found valid index ");
-      Serial.print(i);
-      Serial.print(" » id ");
-      Serial.print(fields.id);
-      Serial.print(" » count ");
-      Serial.println(fields.count);
+    if (backupIsValid(fields) && fields.id > backupId) {
+      debugValue("foundBackupIndex", i);
+      debugValue("id", fields.id);
+      debugValue("count", fields.count, true);
 
-      backupLatestId    = fields.id;
-      backupLatestCount = fields.count;
-      backupLatestIndex = i;
+      backupId    = fields.id;
+      backupCount = fields.count;
+      backupIndex = i;
     }
   }
-  countSetLocal(backupLatestCount);
+  countSetLocal(backupCount);
 }
 
 void loopBackup() {
-  if (backupLatestCount == countLocal) return;
-  if (millis() < countLocalChangedAt + BACKUP_DEBOUNCE_MS) return;
+  if (backupCount == countLocal) return;
+  if (timeSince(countLocalChangedAt) < BACKUP_DEBOUNCE_MS) return;
 
-  backupLatestId++;
-  backupLatestIndex = backupNextIndex();
-  backupLatestCount = countLocal;
+  backupId++;
+  backupIndex = backupNextIndex();
+  backupCount = countLocal;
 
   backup_fields fields;
-  fields.id = backupLatestId;
-  fields.count = backupLatestCount;
+  fields.id = backupId;
+  fields.count = backupCount;
   fields.checksum = backupChecksum(fields);
-  backupSet(backupLatestIndex, fields);
+  backupSet(backupIndex, fields);
 }
 
 backup_fields backupGet(backup_index_t index) {
@@ -182,10 +199,6 @@ backup_fields backupGet(backup_index_t index) {
 }
 
 backup_fields backupSet(uint16_t index, backup_fields fields) {
-  Serial.print("backupSet ");
-  Serial.print(index);
-  Serial.print(" to count: ");
-  Serial.println(fields.count);
   return EEPROM.put(backupAddress(index), fields);
 }
 
@@ -205,7 +218,7 @@ backup_checksum_t backupChecksum(backup_fields fields) {
 }
 
 backup_index_t backupNextIndex() {
-  return (backupLatestIndex >= backupMaximumIndex) ? 0 : backupLatestIndex + 1;
+  return (backupIndex >= backupIndexMaximum) ? 0 : backupIndex + 1;
 }
 
 bool backupIsValid(backup_fields fields) {
@@ -237,62 +250,61 @@ void loopButtons() {
     countAddLocal(-1);
 }
 
-
 // ########################################## //
-//                 CONNECTION                 //
-//            between the counters            //
+//                    LINK                    //
+//    RS485 connection between the counters   //
 // ########################################## //
 
-SoftwareSerial connection(COMMUNICATION_RO, COMMUNICATION_DI);
+SoftwareSerial link(LINK_RS485_RO, LINK_RS485_DI);
+count_t linkSentCount;
+time_ms_t linkSentAt;
 
-void setupConnection() {
-  pinMode(COMMUNICATION_DE, OUTPUT);
-  pinMode(COMMUNICATION_RE, OUTPUT);
-  setSending(false);
+void setupLink() {
+  pinMode(LINK_RS485_DE, OUTPUT);
+  pinMode(LINK_RS485_RE, OUTPUT);
+  linkSetSending(false);
 
-  connection.begin(9600);
+  link.begin(LINK_BAUD_RATE);
+  link.setTimeout(50);
 }
 
-void setSending(bool transmit) {
-  digitalWrite(COMMUNICATION_DE, transmit ? HIGH : LOW);
-  digitalWrite(COMMUNICATION_RE, transmit ? HIGH : LOW);
-}
-
-void loopConnection() {
-  if (connection.available() > 0) {
+void loopLink() {
+  if (link.available() > 0) {
     receiveRemoteCount();
   } else {
-    sendLocalCountFrequently();
+    linkSendLocalCount();
   }
 }
 
-void sendLocalCountFrequently() {
-  static int32_t iteration = 0;
-
-  if (iteration++ > 10000) {
-    sendLocalCount();
-    iteration = 0;
-  }
+void linkSetSending(bool transmit) {
+  digitalWrite(LINK_RS485_DE, transmit ? HIGH : LOW);
+  digitalWrite(LINK_RS485_RE, transmit ? HIGH : LOW);
 }
 
-void sendLocalCount() {
-  setSending(true);
-  connection.print(countLocal);
-  connection.print("|");
-  connection.flush();
-  setSending(false);
+void linkSendLocalCount() {
+  if ((linkSentCount == countLocal) && (timeSince(linkSentAt) < LINK_SENT_DEBOUNCE_MS))
+    return;
 
-  Serial.print("sendLocalCount: ");
-  Serial.println(countLocal);
+  linkSetSending(true);
+  link.print(LINK_MESSAGE_BEGIN);
+  link.print(countLocal);
+  link.print(LINK_MESSAGE_END);
+  link.flush();
+  linkSetSending(false);
+
+  linkSentCount = countLocal;
+  linkSentAt = now;
 }
 
 void receiveRemoteCount() {
-  count_t remote = connection.parseInt();
-  connection.read(); // for "|"
-  countSetRemote(remote);
+  char begin = link.read();
+  if (begin != LINK_MESSAGE_BEGIN) return;
 
-  Serial.print("receiveRemoteCount: ");
-  Serial.println(countLocal);
+  count_t remote = link.parseInt();
+  char end = link.read();
+  if (end != LINK_MESSAGE_END) return;
+
+  countSetRemote(remote);
 }
 
 // ########################################## //
@@ -326,4 +338,33 @@ void setupSound() {
 }
 
 void loopSound() {
+}
+
+// ########################################## //
+//                    DEBUG                   //
+//     send important values over Serial      //
+// ########################################## //
+time_ms_t debugOutputAt;
+
+void setupDebug() {
+  Serial.begin(DEBUG_BAUD_RATE);
+}
+
+void loopDebug() {
+  if (timeSince(debugOutputAt) < DEBUG_DEBOUNCE_MS) return;
+
+  debugValue("local", countLocal);
+  debugValue("backup", backupCount);
+  debugValue("sent", linkSentCount);
+  debugValue("remote", countRemote);
+  debugValue("backupIndex", backupIndex);
+  debugValue("backupId", backupId, true);
+  debugOutputAt = now;
+}
+
+void debugValue(const char * key, int32_t value, bool endLine) {
+  Serial.print(key);
+  Serial.print(',');
+  Serial.print(value);
+  endLine ? Serial.println() : Serial.print(',');
 }
