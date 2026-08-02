@@ -1,5 +1,5 @@
 {
-    "sketch": "sketch_v6_arcade_buttons.ino",
+    "sketch": "visitor_counter.ino",
     "output": "build",
     "board": "arduino:avr:nano",
     "programmer": "avrispmkii",
