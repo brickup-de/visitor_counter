@@ -17,6 +17,7 @@
 #define LINK_RS485_DE 9
 #define LINK_RS485_RE 10
 #define LINK_RS485_RO 11
+#define LINK_SEED_NOISE A0 // must be unconnected, it is read for its noise.
 #define DISPLAY_CLK A5
 #define DISPLAY_DIO A4
 #define SOUND_BUZZER 6
@@ -40,6 +41,7 @@
 #define LINK_MESSAGE_BEGIN '['
 #define LINK_MESSAGE_END ']'
 #define LINK_SENT_DEBOUNCE_MS 2000
+#define LINK_SENT_JITTER_MS 500
 #define SOUND_CONFIRM_DURATION_MS 400
 #define SOUND_CONFIRM_FREQUENCY_HZ 1500
 #define SOUND_WARNING_DURATION_MS 200
@@ -354,15 +356,19 @@ bool buttonResetTriggered() {
 SoftwareSerial link(LINK_RS485_RO, LINK_RS485_DI);
 count_t linkSentCount;
 time_ms_t linkSentAt;
+time_ms_t linkSentInterval;
 time_ms_t linkReceivedAt;
 
 void setupLink() {
   pinMode(LINK_RS485_DE, OUTPUT);
   pinMode(LINK_RS485_RE, OUTPUT);
+
   linkSetSending(false);
+  linkSeedRandom();
 
   link.begin(LINK_BAUD_RATE);
   link.setTimeout(50);
+  linkSentInterval = linkNextInterval();
 }
 
 void loopLink() {
@@ -371,6 +377,20 @@ void loopLink() {
   } else {
     linkSendLocalCount();
   }
+}
+
+// each counter needs unique seeds to avoid colliding transmissions;
+// otherwise, same hardware and same code would produce same random() intervals
+void linkSeedRandom() {
+  unsigned long seed = 0;
+  for (uint8_t i = 0; i < 16; i++)
+    seed = seed * 31 + analogRead(LINK_SEED_NOISE);
+  randomSeed(seed);
+  debugValue("linkSeed", seed, true);
+}
+
+time_ms_t linkNextInterval() {
+  return LINK_SENT_DEBOUNCE_MS + random(LINK_SENT_JITTER_MS);
 }
 
 void linkSetSending(bool transmit) {
@@ -383,7 +403,7 @@ bool linkIsBroken() {
 }
 
 void linkSendLocalCount() {
-  if ((linkSentCount == countLocal) && (timeSince(linkSentAt) < LINK_SENT_DEBOUNCE_MS))
+  if ((linkSentCount == countLocal) && (timeSince(linkSentAt) < linkSentInterval))
     return;
 
   linkSetSending(true);
@@ -395,6 +415,7 @@ void linkSendLocalCount() {
 
   linkSentCount = countLocal;
   linkSentAt = now;
+  linkSentInterval = linkNextInterval();
 }
 
 void receiveRemoteCount() {
