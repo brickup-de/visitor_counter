@@ -29,7 +29,8 @@
 #define BACKUP_DEBOUNCE_MS 3000
 #define BUTTON_DEBOUNCE_MS 20
 #define BUTTON_PRESS_COOLDOWN_MS 3000
-#define BUTTON_RESET_HOLD_MS 5000
+#define BUTTON_RESET_HOLD_MS 3000
+#define BUTTON_RESET_WINDOW_MS 10000
 #define DEBUG_BAUD_RATE 9600
 #define DEBUG_DEBOUNCE_MS 1000
 #define DISPLAY_LEADING_ZEROS false
@@ -38,6 +39,8 @@
 #define LINK_MESSAGE_BEGIN '['
 #define LINK_MESSAGE_END ']'
 #define LINK_SENT_DEBOUNCE_MS 2000
+#define SOUND_CONFIRM_DURATION_MS 400
+#define SOUND_CONFIRM_FREQUENCY_HZ 1500
 #define SOUND_WARNING_DURATION_MS 200
 #define SOUND_WARNING_FREQUENCY_HZ 1000
 #define SOUND_WARNING_INTERVAL_MS 30000
@@ -127,9 +130,8 @@ time_ms_t countTotalChangedAt() {
 }
 
 void setupCount() {
-  countSetLocal(0);
-  countSetReceived(0);
-  countSetRemote(0);
+  // start from a known state, setupBackup is next
+  countReset();
 }
 
 void loopCount() {
@@ -140,6 +142,14 @@ void loopCount() {
     return;
 
   countSetRemote(countReceived);
+}
+
+// zero the remote counts as well, so that the display confirms
+// the reset instead of waiting for the other counter to catch up
+void countReset() {
+  countSetLocal(0);
+  countSetReceived(0);
+  countSetRemote(0);
 }
 
 void countAddLocal(count_t delta) {
@@ -197,6 +207,10 @@ void setupBackup() {
     }
   }
   countSetLocal(backupCount);
+
+  if (backupId > 0) {
+    soundConfirm();
+  }
 }
 
 void loopBackup() {
@@ -277,10 +291,13 @@ void loopButtons() {
     countAddLocal(+1);
   if (buttonDecrease.onReleased())
     countAddLocal(-1);
-  if (buttonResetTriggered())
-    countSetLocal(0);
+  if (buttonResetTriggered()) {
+    countReset();
+    soundConfirm();
+  }
 
-  // the LED doubles as a visible warning light
+  // the LEDs double as indicator lights
+  digitalWrite(BUTTON_INCREASE_LED, buttonResetWindowOpen() ? HIGH : LOW);
   digitalWrite(BUTTON_DECREASE_LED, linkIsBroken() ? HIGH : LOW);
 }
 
@@ -288,7 +305,15 @@ bool buttonPressedRecently() {
   return timeSince(buttonPressedAt) < BUTTON_PRESS_COOLDOWN_MS;
 }
 
+// reset only possible after power-on, so it doesn't happen by accident
+bool buttonResetWindowOpen() {
+  return now < BUTTON_RESET_WINDOW_MS;
+}
+
 bool buttonResetTriggered() {
+  if (!buttonResetWindowOpen())
+    return false;
+
   if (buttonIncrease.getButtonState() || buttonDecrease.getButtonState()) {
     buttonsBothHeldSince = 0;
     return false;
@@ -403,6 +428,10 @@ time_ms_t soundWarnedAt;
 
 void setupSound() {
   pinMode(SOUND_BUZZER, OUTPUT);
+}
+
+void soundConfirm() {
+  tone(SOUND_BUZZER, SOUND_CONFIRM_FREQUENCY_HZ, SOUND_CONFIRM_DURATION_MS);
 }
 
 void loopSound() {
