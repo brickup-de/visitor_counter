@@ -27,6 +27,7 @@
 // ########################################## //
 
 #define BACKUP_DEBOUNCE_MS 3000
+#define BACKUP_MAXIMUM_AGE_MS 30000
 #define BUTTON_DEBOUNCE_MS 20
 #define BUTTON_PRESS_COOLDOWN_MS 3000
 #define BUTTON_RESET_HOLD_MS 3000
@@ -180,12 +181,14 @@ void countSetRemote(count_t remote) {
 // ########################################## //
 
 count_t backupCount;
+time_ms_t backupWrittenAt;
 backup_id_t backupId;
 backup_index_t backupIndex;
 backup_index_t backupIndexMaximum;
 
 void setupBackup() {
   backupCount = 0;
+  backupWrittenAt = 0;
   backupId = 0;
   backupIndex = 0;
   
@@ -216,7 +219,10 @@ void setupBackup() {
 void loopBackup() {
   if (backupCount == countLocal)
     return;
-  if (timeSince(countLocalChangedAt) < BACKUP_DEBOUNCE_MS)
+  
+  // wait for a stable count, but never postpone a backup for too long
+  if ((timeSince(countLocalChangedAt) < BACKUP_DEBOUNCE_MS) 
+   && (timeSince(backupWrittenAt) < BACKUP_MAXIMUM_AGE_MS))
     return;
 
   backupId++;
@@ -228,6 +234,7 @@ void loopBackup() {
   fields.count = backupCount;
   fields.checksum = backupChecksum(fields);
   backupSet(backupIndex, fields);
+  backupWrittenAt = now;
 }
 
 backup_fields backupGet(backup_index_t index) {
@@ -469,6 +476,7 @@ void loopDebug() {
   debugValue("backup", backupCount);
   debugValue("bIndex", backupIndex);
   debugValue("bId", backupId);
+  debugValue("bAge", timeSince(backupWrittenAt));
   debugValue("linkAge", timeSince(linkReceivedAt));
   debugValue("bothBtnTime", buttonsBothHeldSince == 0 ? 0 : timeSince(buttonsBothHeldSince), true);
   debugOutputAt = now;
