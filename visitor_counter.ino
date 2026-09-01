@@ -195,15 +195,10 @@ void setupBackup() {
   backupIndexMaximum = EEPROM.length() / sizeof(backup_fields) - 1;
   debugValue("maxBackups", backupIndexMaximum + 1, true);
 
-  // find latest valid backup
-  Serial.println("setupBackup: searching...");
+  // find and restore latest valid backup
   for (backup_index_t i = 0; i <= backupIndexMaximum; i++) {
     backup_fields fields = backupGet(i);
     if (backupIsValid(fields) && fields.id > backupId) {
-      debugValue("foundBackupIndex", i);
-      debugValue("id", fields.id);
-      debugValue("count", fields.count, true);
-
       backupId = fields.id;
       backupCount = fields.count;
       backupIndex = i;
@@ -211,6 +206,10 @@ void setupBackup() {
   }
   countSetLocal(backupCount);
 
+  // only report final result (takes to much time in loop)
+  debugValue("foundBackupIndex", backupIndex);
+  debugValue("id", backupId);
+  debugValue("count", backupCount, true);
   if (backupId > 0) {
     soundConfirm();
   }
@@ -278,6 +277,8 @@ AcksenButton buttonIncrease(BUTTON_INCREASE, ACKSEN_BUTTON_MODE_NORMAL, BUTTON_D
 AcksenButton buttonDecrease(BUTTON_DECREASE, ACKSEN_BUTTON_MODE_NORMAL, BUTTON_DEBOUNCE_MS, INPUT_PULLUP);
 time_ms_t buttonsBothHeldSince;
 time_ms_t buttonPressedAt;
+time_ms_t buttonResetWindowStartedAt;
+bool buttonResetWindowStarted;
 
 void setupButtons() {
   pinMode(BUTTON_INCREASE_LED, OUTPUT);
@@ -312,9 +313,15 @@ bool buttonPressedRecently() {
   return timeSince(buttonPressedAt) < BUTTON_PRESS_COOLDOWN_MS;
 }
 
-// reset only possible after power-on, so it doesn't happen by accident
+// reset only possible after power-on, so it doesn't happen by accident.
+// the window starts with the first loop, as setup() might take some time.
 bool buttonResetWindowOpen() {
-  return now < BUTTON_RESET_WINDOW_MS;
+  if (!buttonResetWindowStarted) {
+    buttonResetWindowStarted = true;
+    buttonResetWindowStartedAt = now;
+  }
+
+  return timeSince(buttonResetWindowStartedAt) < BUTTON_RESET_WINDOW_MS;
 }
 
 bool buttonResetTriggered() {
