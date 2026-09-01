@@ -119,17 +119,12 @@ unsigned long timeSince(time_ms_t event) {
 // local/remote/total count; can be negative  //
 // ########################################## //
 
+time_ms_t countLocalChangedAt;
 count_t countLocal;
 count_t countReceived;
 count_t countRemote;
 count_t countTotal() {
   return countLocal + countRemote;
-}
-
-time_ms_t countLocalChangedAt;
-time_ms_t countRemoteChangedAt;
-time_ms_t countTotalChangedAt() {
-  return max(countLocalChangedAt, countRemoteChangedAt);
 }
 
 void setupCount() {
@@ -171,10 +166,7 @@ void countSetReceived(count_t received) {
 }
 
 void countSetRemote(count_t remote) {
-  if (countRemote != remote) {
-    countRemote = remote;
-    countRemoteChangedAt = now;
-  }
+  countRemote = remote;
 }
 
 // ########################################## //
@@ -240,11 +232,12 @@ void loopBackup() {
 
 backup_fields backupGet(backup_index_t index) {
   backup_fields fields;
-  return EEPROM.get(backupAddress(index), fields);
+  EEPROM.get(backupAddress(index), fields);
+  return fields;
 }
 
-backup_fields backupSet(uint16_t index, backup_fields fields) {
-  return EEPROM.put(backupAddress(index), fields);
+void backupSet(backup_index_t index, backup_fields fields) {
+  EEPROM.put(backupAddress(index), fields);
 }
 
 backup_address_t backupAddress(backup_index_t index) {
