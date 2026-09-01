@@ -34,9 +34,13 @@
 #define DEBUG_DEBOUNCE_MS 1000
 #define DISPLAY_LEADING_ZEROS false
 #define LINK_BAUD_RATE 9600
+#define LINK_BROKEN_AFTER_MS 10000
 #define LINK_MESSAGE_BEGIN '['
 #define LINK_MESSAGE_END ']'
 #define LINK_SENT_DEBOUNCE_MS 2000
+#define SOUND_WARNING_DURATION_MS 200
+#define SOUND_WARNING_FREQUENCY_HZ 1000
+#define SOUND_WARNING_INTERVAL_MS 30000
 
 // ########################################## //
 //        TYPES, STRUCTURES, PROTOTYPES       //
@@ -275,6 +279,9 @@ void loopButtons() {
     countAddLocal(-1);
   if (buttonResetTriggered())
     countSetLocal(0);
+
+  // the LED doubles as a visible warning light
+  digitalWrite(BUTTON_DECREASE_LED, linkIsBroken() ? HIGH : LOW);
 }
 
 bool buttonPressedRecently() {
@@ -308,6 +315,7 @@ bool buttonResetTriggered() {
 SoftwareSerial link(LINK_RS485_RO, LINK_RS485_DI);
 count_t linkSentCount;
 time_ms_t linkSentAt;
+time_ms_t linkReceivedAt;
 
 void setupLink() {
   pinMode(LINK_RS485_DE, OUTPUT);
@@ -329,6 +337,10 @@ void loopLink() {
 void linkSetSending(bool transmit) {
   digitalWrite(LINK_RS485_DE, transmit ? HIGH : LOW);
   digitalWrite(LINK_RS485_RE, transmit ? HIGH : LOW);
+}
+
+bool linkIsBroken() {
+  return timeSince(linkReceivedAt) >= LINK_BROKEN_AFTER_MS;
 }
 
 void linkSendLocalCount() {
@@ -356,6 +368,7 @@ void receiveRemoteCount() {
   if (end != LINK_MESSAGE_END)
     return;
 
+  linkReceivedAt = now;
   countSetReceived(remote);
 }
 
@@ -386,11 +399,22 @@ void loopDisplay() {
 //   passive buzzer to produce beep sounds    //
 // ########################################## //
 
+time_ms_t soundWarnedAt;
+
 void setupSound() {
   pinMode(SOUND_BUZZER, OUTPUT);
 }
 
 void loopSound() {
+  if (!linkIsBroken()) {
+    return;
+  }
+  if (timeSince(soundWarnedAt) < SOUND_WARNING_INTERVAL_MS)
+    return;
+
+  // tone() with a duration returns immediately
+  tone(SOUND_BUZZER, SOUND_WARNING_FREQUENCY_HZ, SOUND_WARNING_DURATION_MS);
+  soundWarnedAt = now;
 }
 
 // ########################################## //
@@ -416,6 +440,7 @@ void loopDebug() {
   debugValue("backup", backupCount);
   debugValue("bIndex", backupIndex);
   debugValue("bId", backupId);
+  debugValue("linkAge", timeSince(linkReceivedAt));
   debugValue("bothBtnTime", buttonsBothHeldSince == 0 ? 0 : timeSince(buttonsBothHeldSince), true);
   debugOutputAt = now;
 }
